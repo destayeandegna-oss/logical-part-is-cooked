@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: bbeams_mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+      MONGO_INITDB_DATABASE: bbeams_db
+    volumes:
+      - mongodb_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: bbeams_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build: .
+    container_name: bbeams_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_DB_NAME=bbeams_db
+      - MONGO_USER=admin
+      - MONGO_PASSWORD=admin123
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=True
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./media:/app/media
+      - ./static:/app/static
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn bb_eams.wsgi:application --bind 0.0.0.0:8000 --workers 4"
+
+  celery:
+    build: .
+    container_name: bbeams_celery
+    restart: always
+    environment:
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_DB_NAME=bbeams_db
+      - MONGO_USER=admin
+      - MONGO_PASSWORD=admin123
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - mongodb
+      - redis
+    command: celery -A bb_eams worker --loglevel=info
+
+volumes:
+  mongodb_data:
+  redis_data:
